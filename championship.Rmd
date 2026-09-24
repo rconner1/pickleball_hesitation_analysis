@@ -1,0 +1,629 @@
+---
+title: "championship"
+author: "Riley Conner"
+date: "2026-04-23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+library(tidyverse)
+library(readr)
+library(dplyr)
+library(janitor)
+library(tidyr)
+library(knitr)
+library(kableExtra)
+library(ggplot2)
+library(ggridges)
+```
+
+## R Markdown
+
+```{r}
+data = read_csv("data.csv") %>% clean_names()
+
+
+data <- data %>%
+  select(
+    -game_id_for_us
+  ) %>%
+  rename(
+    game_type        = game_types,
+    hesitation_server = hesitation_s,
+    hesitation_receiver = hesitation_r,
+    hesitations_server = number_of_hesitations_s,
+    hesitations_receiver = number_of_hesitations_r,
+    shots_server     = number_total_of_shots_s,
+    shots_receiver   = number_total_of_shots_r,
+    shots_total      = number_total_shots,
+    serving_team_win = did_the_serving_team_win
+  )
+
+library(dplyr)
+library(stringr)
+
+data <- data |>
+  mutate(
+    error_type = tolower(error_type),
+    error_type = case_when(
+      str_detect(error_type, "pot")        ~ "positional",
+      TRUE                                 ~ error_type
+    ),
+    error_type = factor(error_type)
+  )
+head(data)
+```
+```{r}
+
+```
+
+
+
+
+```{r}
+var_labels <- c(
+  game_type           = "Game type",
+  rally_id            = "Rally ID",
+  serving_team        = "Serving team",
+  receiving_team      = "Receiving team",
+  hesitation_server   = "Hesitation (server)",
+  hesitation_receiver = "Hesitation (receiver)",
+  hesitations_server  = "Number of hesitations (server)",
+  hesitations_receiver= "Number of hesitations (receiver)",
+  shots_server        = "Number of shots (server)",
+  shots_receiver      = "Number of shots (receiver)",
+  shots_total         = "Total shots in rally",
+  error_type          = "Error type",
+  serving_team_win    = "Serving team won rally (1 = yes)"
+)
+```
+
+```{r}
+
+data <- data |>
+  mutate(
+    hesitation_server   = tolower(hesitation_server),
+    hesitation_receiver = tolower(hesitation_receiver),
+    any_hesitation = if_else(
+      hesitation_server == "yes" | hesitation_receiver == "yes",
+      1L, 0L
+    )
+  )
+```
+
+Tables
+```{r}
+library(dplyr)
+
+numeric_summary <- data |>
+  summarise(
+    n_rallies = n(),
+    shots_total_min      = min(shots_total, na.rm = TRUE),
+    shots_total_max      = max(shots_total, na.rm = TRUE),
+    shots_total_mean     = mean(shots_total, na.rm = TRUE),
+    shots_total_sd       = sd(shots_total, na.rm = TRUE),
+
+    shots_server_min     = min(shots_server, na.rm = TRUE),
+    shots_server_max     = max(shots_server, na.rm = TRUE),
+    shots_server_mean    = mean(shots_server, na.rm = TRUE),
+    shots_server_sd      = sd(shots_server, na.rm = TRUE),
+
+    shots_receiver_min   = min(shots_receiver, na.rm = TRUE),
+    shots_receiver_max   = max(shots_receiver, na.rm = TRUE),
+    shots_receiver_mean  = mean(shots_receiver, na.rm = TRUE),
+    shots_receiver_sd    = sd(shots_receiver, na.rm = TRUE),
+
+    hes_server_min       = min(hesitations_server, na.rm = TRUE),
+    hes_server_max       = max(hesitations_server, na.rm = TRUE),
+    hes_server_mean      = mean(hesitations_server, na.rm = TRUE),
+    hes_server_sd        = sd(hesitations_server, na.rm = TRUE),
+
+    hes_receiver_min     = min(hesitations_receiver, na.rm = TRUE),
+    hes_receiver_max     = max(hesitations_receiver, na.rm = TRUE),
+    hes_receiver_mean    = mean(hesitations_receiver, na.rm = TRUE),
+    hes_receiver_sd      = sd(hesitations_receiver, na.rm = TRUE)
+  )
+```
+
+```{r}
+numeric_table <- tibble(
+  Variable = c(
+    "Total shots in rally",
+    "Shots by server",
+    "Shots by receiver",
+    "Hesitations by server",
+    "Hesitations by receiver"
+  ),
+  Min  = c(
+    numeric_summary$shots_total_min,
+    numeric_summary$shots_server_min,
+    numeric_summary$shots_receiver_min,
+    numeric_summary$hes_server_min,
+    numeric_summary$hes_receiver_min
+  ),
+  Max  = c(
+    numeric_summary$shots_total_max,
+    numeric_summary$shots_server_max,
+    numeric_summary$shots_receiver_max,
+    numeric_summary$hes_server_max,
+    numeric_summary$hes_receiver_max
+  ),
+  Mean = c(
+    numeric_summary$shots_total_mean,
+    numeric_summary$shots_server_mean,
+    numeric_summary$shots_receiver_mean,
+    numeric_summary$hes_server_mean,
+    numeric_summary$hes_receiver_mean
+  ),
+  SD   = c(
+    numeric_summary$shots_total_sd,
+    numeric_summary$shots_server_sd,
+    numeric_summary$shots_receiver_sd,
+    numeric_summary$hes_server_sd,
+    numeric_summary$hes_receiver_sd
+  )
+) |>
+  mutate(
+    across(c(Min, Max), round, 0),
+    across(c(Mean, SD), ~ round(., 2))
+  )
+
+numeric_table <- numeric_table |>
+  add_row(
+    Variable = "Hesitation Rate Per Shot",
+    Min  = round(min(data$hesitation_rate, na.rm = TRUE), 2),
+    Max  = round(max(data$hesitation_rate, na.rm = TRUE), 2),
+    Mean = round(mean(data$hesitation_rate, na.rm = TRUE), 3),
+    SD   = round(sd(data$hesitation_rate, na.rm = TRUE), 3)
+  )
+
+numeric_table
+```
+
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(stringr)
+
+# Make consistent factors / labels
+data2 <- data |>
+  mutate(
+    hesitation_server   = factor(tolower(hesitation_server), levels = c("no", "yes")),
+    hesitation_receiver = factor(tolower(hesitation_receiver), levels = c("no", "yes")),
+    serving_team_win    = factor(serving_team_win, levels = c(0, 1), labels = c("Loss", "Win")),
+    error_type          = tolower(error_type)
+  )
+
+data2 <- data2 |>
+  mutate(
+    error_type = case_when(
+      str_detect(error_type, "pos") ~ "positional",
+      str_detect(error_type, "dec") ~ "decision",
+      str_detect(error_type, "exec") ~ "execution",
+      TRUE ~ error_type
+    ),
+    error_type = factor(error_type)
+  )
+
+categorical_table <- bind_rows(
+  data2 |>
+    count(hesitation_server, name = "Count") |>
+    mutate(
+      Variable = "Hesitation (server)",
+      Value = as.character(hesitation_server)
+    ) |>
+    select(Variable, Value, Count),
+
+  data2 |>
+    count(hesitation_receiver, name = "Count") |>
+    mutate(
+      Variable = "Hesitation (receiver)",
+       Value = as.character(hesitation_receiver)
+    ) |>
+    select(Variable,  Value, Count),
+
+  data2 |>
+    count(serving_team_win, name = "Count") |>
+    mutate(
+      Variable = "Serving team result",
+       Value = as.character(serving_team_win)
+    ) |>
+    select(Variable,  Value, Count),
+
+  data2 |>
+    count(error_type, name = "Count") |>
+    mutate(
+      Variable = "Error type",
+       Value = as.character(error_type)
+    ) |>
+    select(Variable,  Value, Count)
+) |>
+  group_by(Variable) |>
+  mutate(
+    Percent = round(100 * Count / sum(Count), 1)
+  ) |>
+  ungroup()
+
+categorical_table
+
+library(dplyr)
+
+hesitation_events <- tibble(
+  Side   = c("Server", "Receiver"),
+  Events = c(
+    sum(data$hesitations_server, na.rm = TRUE),
+    sum(data$hesitations_receiver, na.rm = TRUE)
+  )
+) |>
+  mutate(
+    Percent = round(100 * Events / sum(Events), 1)
+  )
+
+hesitation_events
+```
+
+
+```{r}
+
+win_by_hes <- data |>
+  group_by(any_hesitation) |>
+  summarise(
+    n_rallies = n(),
+    win_rate  = mean(serving_team_win, na.rm = TRUE)
+  ) |>
+  ungroup() |>
+  mutate(
+    hesitation_label = if_else(any_hesitation == 1, "Hesitation in rally", "No hesitation"),
+    win_rate_pct = win_rate * 100
+  )
+```
+
+
+```{r}
+library(dplyr)
+library(tidyr)
+
+plot_data <- data |>
+  summarise(
+    server_no  = mean(serving_team_win[hesitation_server == "no"], na.rm = TRUE),
+    server_yes = mean(serving_team_win[hesitation_server == "yes"], na.rm = TRUE),
+    receiver_no  = mean(serving_team_win[hesitation_receiver == "no"], na.rm = TRUE),
+    receiver_yes = mean(serving_team_win[hesitation_receiver == "yes"], na.rm = TRUE)
+  ) |>
+  pivot_longer(
+    cols = everything(),
+    names_to = "group",
+    values_to = "win_rate"
+  ) |>
+  mutate(
+    side = case_when(
+      group %in% c("server_no", "server_yes") ~ "Server",
+      group %in% c("receiver_no", "receiver_yes") ~ "Receiver"
+    ),
+    hesitation = case_when(
+      group %in% c("server_no", "receiver_no") ~ "No",
+      group %in% c("server_yes", "receiver_yes") ~ "Yes"
+    )
+  )
+
+library(ggplot2)
+library(scales)
+
+library(ggplot2)
+library(scales)
+
+ggplot(plot_data, aes(x = side, y = win_rate, fill = hesitation)) +
+  geom_col(position = position_dodge(width = 0.7), width = 0.6, color = "white") +
+  geom_text(
+    aes(label = percent(win_rate, accuracy = 0.1)),
+    position = position_dodge(width = 0.7),
+    vjust = -0.5,
+    size = 4.5,
+    fontface = "bold",
+    color = "#1F1F1F"
+  ) +
+  scale_y_continuous(
+    labels = percent_format(accuracy = 1),
+    limits = c(0, 0.8),    # top at 80% so labels don't hit the edge
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  scale_fill_manual(
+    values = c("No" ="#4885bf", "Yes" = "#FF8C1A"),
+    name   = "Hesitation"
+  ) +
+  labs(
+    title = "Serving Team Win Rate by Which Side Hesitated",
+    x = "Team position (serving vs receiving)",
+    y = "Serving team win rate"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.text = element_text(size = 13, color = "#2B2B2B"),
+    axis.title = element_text(size = 14, face = "bold"),
+    plot.title = element_text(size = 18, face = "bold", hjust = 0.5),
+    legend.title = element_text(size = 12, face = "bold"),
+    legend.text = element_text(size = 11),
+    legend.position = "right",
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.background = element_rect(fill = "white", color = NA)
+  )
+```
+Interpretation - 
+if receiver doesn't hesitate, serving team wins 38%
+if receiver does hesitate, serving team wins 53%
+if server doesn't hesitate, they win 62%
+if server hesitates, they win 22%
+
+
+
+creative graph
+```{r}
+library(dplyr)
+
+data <- data |>
+  mutate(
+    hesitation_server   = tolower(hesitation_server),
+    hesitation_receiver = tolower(hesitation_receiver),
+    any_hesitation = if_else(
+      hesitation_server == "yes" | hesitation_receiver == "yes",
+      "Hesitation in rally",
+      "No hesitation"
+    )
+  )
+
+library(ggplot2)
+
+ggplot(data, aes(x = any_hesitation, y = shots_total, fill = any_hesitation)) +
+  geom_violin(trim = FALSE, alpha = 0.6) +
+  geom_boxplot(width = 0.15, outlier.shape = NA, color = "black", alpha = 0.8) +
+  stat_summary(
+    fun = "mean",
+    geom = "point",
+    shape = 21,
+    size = 2.5,
+    fill = "white",
+    color = "black"
+  ) +
+  scale_fill_manual(values = c("No hesitation" = , "Hesitation in rally" = "lightskyblue")) +
+  labs(
+    title = "Distribution of rally length with and without hesitation",
+    x = "Presence of hesitation in rally",
+    y = "Total shots in rally"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position = "none"
+  )
+```
+
+ hesitation is more frequent when rally is long
+
+
+
+
+# trying some crazy shit
+
+
+```{r}
+library(dplyr)
+
+heatmap_data <- data |>
+  mutate(
+    any_hesitation = if_else(
+      hesitation_server == "yes" | hesitation_receiver == "yes",
+      "Hesitation in rally",
+      "No hesitation"
+    ),
+    any_hesitation = factor(any_hesitation,
+                            levels = c("No hesitation", "Hesitation in rally")),
+    length_bin = case_when(
+      shots_total <= 5  ~ "1-5",
+      shots_total <= 10 ~ "6-10",
+      shots_total <= 15 ~ "11-15",
+      shots_total <= 20 ~ "16-20",
+      TRUE              ~ "21+"
+    )
+  ) |>
+  group_by(any_hesitation, length_bin) |>
+  summarise(
+    n_rallies = n(),
+    win_rate  = mean(serving_team_win, na.rm = TRUE),
+    .groups   = "drop"
+  ) |>
+  mutate(
+    length_bin = factor(length_bin,
+                        levels = c("1-5", "6-10", "11-15", "16-20", "21+"))
+  )
+
+ggplot(heatmap_data, aes(x = length_bin, y = any_hesitation, fill = win_rate)) +
+  geom_tile(color = "white", linewidth = 1) +
+  geom_text(aes(label = paste0(round(win_rate * 100, 1), "%\n(n=", n_rallies, ")")),
+            size = 4) +
+  scale_fill_gradient2(
+    low = "salmon",
+    mid = "#F4F4F4",
+    high = "lightskyblue",
+    midpoint = 0.5,
+    labels = scales::percent_format(accuracy = 1)
+  ) +
+  labs(
+    title = "Serving team win rate by hesitation and rally length",
+    x = "Rally length bin",
+    y = "Presence of hesitation in rally",
+    fill = "Win rate"
+  ) +
+  theme_minimal(base_size = 13)
+
+library(ggplot2)
+library(dplyr)
+library(scales)
+
+ggplot(heatmap_data, aes(x = length_bin, y = any_hesitation, fill = win_rate)) +
+  geom_tile(color = "white", linewidth = 2, width = 0.95, height = 0.95) +
+  geom_text(
+    aes(
+      label = paste0(round(win_rate * 100, 1), "%", "\n", "(n = ", n_rallies, ")")
+    ),
+    size = 5,
+    fontface = "bold",
+    lineheight = 0.95,
+    color = "#1F1F1F"
+  ) +
+  scale_fill_gradient2(
+    low = "#FF8C1A",
+    mid = "#F3F1ED",
+    high = "#4885bf",
+    midpoint = 0.50,
+    limits = c(0.25, 0.65),
+    labels = scales::percent_format(accuracy = 1),
+    name = "Serving team\nwin rate"
+  ) +
+  labs(
+    title = "Serving team win rate by hesitation and rally length",
+    subtitle = NULL,
+    x = "Rally length (total shots)",
+    y = NULL
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    panel.grid = element_blank(),
+    axis.text = element_text(size = 13, color = "#2B2B2B"),
+    axis.title.x = element_text(size = 14, face = "bold", margin = margin(t = 12)),
+    plot.title = element_text(size = 18, face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(size = 11.5, color = "#555555", hjust = 0.5),
+    legend.title = element_text(size = 12, face = "bold"),
+    legend.text = element_text(size = 11),
+    legend.position = "right",
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.background = element_rect(fill = "white", color = NA)
+  )
+```
+
+`
+
+# insights
+
+```{r}
+# make sure serving_team_win is numeric 0/1, not factor
+data <- data |>
+  mutate(
+    serving_team_win_num = as.numeric(serving_team_win),  # if serving_team_win is 0/1, this is fine
+    hes_server_bin   = if_else(tolower(hesitation_server) == "yes", 1, 0),
+    hes_receiver_bin = if_else(tolower(hesitation_receiver) == "yes", 1, 0)
+  )
+
+# logistic regression: probability serving team wins ~ server/receiver hesitation
+hes_model <- glm(
+  serving_team_win_num ~ hes_server_bin + hes_receiver_bin,
+  data   = data,
+  family = binomial(link = "logit")
+)
+
+summary(hes_model)
+```
+
+```{r}
+# get coefficient estimates
+coef_hes <- coef(hes_model)
+
+b0 <- coef_hes["(Intercept)"]
+b1 <- coef_hes["hes_server_bin"]
+b2 <- coef_hes["hes_receiver_bin"]
+
+# helper: inverse logit
+inv_logit <- function(x) exp(x) / (1 + exp(x))
+
+# predicted win probabilities for each scenario
+p_none      <- inv_logit(b0)               # no one hesitates
+p_server    <- inv_logit(b0 + b1)          # server hesitates only
+p_receiver  <- inv_logit(b0 + b2)          # receiver hesitates only
+p_both      <- inv_logit(b0 + b1 + b2)     # both hesitate
+
+p_none; p_server; p_receiver; p_both
+```
+```{r}
+alpha_penalty <- p_none - p_server
+beta_bonus    <- p_receiver - p_none
+
+alpha_penalty
+beta_bonus
+```
+
+
+```{r}
+# Create binary hesitation indicators
+data <- data |>
+  mutate(
+    hes_server_bin   = if_else(tolower(hesitation_server) == "yes", 1, 0),
+    hes_receiver_bin = if_else(tolower(hesitation_receiver) == "yes", 1, 0)
+  )
+
+# Compute Hesitation Impact Score (HIS) per rally
+data <- data |>
+  mutate(
+    # ensure serving_team_win is numeric 0/1
+    serving_team_win_num = as.numeric(serving_team_win),
+
+    # HIS = outcome - alpha*server_hes + beta*receiver_hes
+    HIS = serving_team_win_num -
+      alpha_penalty * hes_server_bin +
+      beta_bonus    * hes_receiver_bin
+  )
+head(data)
+
+```
+
+
+
+```{r}
+his_scenarios <- data |>
+  mutate(
+    scenario = case_when(
+      hes_server_bin == 0 & hes_receiver_bin == 0 ~ "No hesitation (either side)",
+      hes_server_bin == 1 & hes_receiver_bin == 0 ~ "Server hesitated only",
+      hes_server_bin == 0 & hes_receiver_bin == 1 ~ "Receiver hesitated only",
+      hes_server_bin == 1 & hes_receiver_bin == 1 ~ "Both hesitated"
+    )
+  ) |>
+  group_by(scenario) |>
+  summarise(
+    n_rallies = n(),
+    mean_HIS  = mean(HIS, na.rm = TRUE),
+    sd_HIS    = sd(HIS, na.rm = TRUE)
+  ) |>
+  arrange(desc(mean_HIS))
+
+his_scenarios
+```
+
+```{r}
+ggplot(data, aes(x = HIS)) +
+  geom_histogram(
+    bins = 20,
+    color = "white",
+    fill = "lightskyblue",
+    alpha = 0.8
+  ) +
+  geom_vline(
+    xintercept = mean(data$HIS, na.rm = TRUE),
+    linetype = "dashed",
+    color = "darkred",
+    linewidth = 1
+  ) +
+  labs(
+    title = "Distribution of Hesitation Impact Score (HIS)",
+    x = "Hesitation Impact Score (HIS)",
+    y = "Number of rallies"
+  ) +
+  theme_minimal(base_size = 13)
+```
+
